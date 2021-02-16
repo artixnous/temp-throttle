@@ -1,0 +1,12 @@
+#!/sbin/openrc-run
+# nous, 2021
+
+name=$RC_SVCNAME
+description="Throttle CPU at threshold temperature"
+supervisor="supervise-daemon"
+command="/usr/local/sbin/temp_throttle.sh"
+command_args="/etc/conf.d/temp_throttle.conf"
+
+depend() {
+    after cpupower
+}
