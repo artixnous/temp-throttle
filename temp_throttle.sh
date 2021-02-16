@@ -36,6 +36,7 @@ echo "TRIP_GPU_TEMP set to $TRIP_GPU_TEMP"
 
 # The frequency will increase when low temperature is reached.
 LOW_TEMP=$((MAX_TEMP - 2))
+MIN_GPU_TEMP=$((TRIP_GPU_TEMP - 5))
 
 CORES=$(nproc) # Get number of CPU cores.
 echo -e "Number of CPU cores detected: $CORES\n"
@@ -46,6 +47,7 @@ CORES=$(seq 0 $CORES)
 MAX_TEMP=${MAX_TEMP}000
 LOW_TEMP=${LOW_TEMP}000
 TRIP_GPU_TEMP=${TRIP_GPU_TEMP}000
+MIN_GPU_TEMP=${MIN_GPU_TEMP}000
 
 FREQ_FILE="/sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies"
 FREQ_MIN="/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq"
@@ -137,6 +139,6 @@ while true; do
         unthrottle
     fi
     GPUTEMP=$(cat /sys/devices/virtual/hwmon/hwmon3/temp7_input)
-    [ $GPUTEMP -le $TRIP_GPU_TEMP ] && dell-bios-fan-control 1
+    if [ $GPUTEMP -le $TRIP_GPU_TEMP && $GPU_TEMP -gt $MIN_GPU_TEMP ] && dell-bios-fan-control 1
     sleep 0.5 # The amount of time between checking temperatures.
 done
