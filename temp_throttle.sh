@@ -139,6 +139,6 @@ while true; do
         unthrottle
     fi
     GPUTEMP=$(cat /sys/devices/virtual/hwmon/hwmon3/temp7_input)
-    if [ $GPUTEMP -le $TRIP_GPU_TEMP && $GPU_TEMP -gt $MIN_GPU_TEMP ] && dell-bios-fan-control 1
+    [[ $GPUTEMP -le $TRIP_GPU_TEMP && $GPU_TEMP -lt $MIN_GPU_TEMP ]] && dell-bios-fan-control 1
     sleep 0.5 # The amount of time between checking temperatures.
 done
