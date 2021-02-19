@@ -8,5 +8,13 @@ command="/usr/local/sbin/temp_throttle.sh"
 command_args="/etc/conf.d/temp_throttle.conf"
 
 depend() {
-    after cpupower
+    need cpupower
+}
+
+start_pre() {
+    echo active >| /sys/devices/system/cpu/intel_pstate/status
+}
+
+stop_pre() {
+    echo passive >| /sys/devices/system/cpu/intel_pstate/status
 }
