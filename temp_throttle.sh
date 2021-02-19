@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: temp_throttle.sh max_temp
+# Usage: temp_throttle.sh MAX_CPU_TEMP
 # USE CELSIUS TEMPERATURES.
 # version 2.21
 
@@ -25,27 +25,30 @@ err_exit () {
     exit 128
 }
 
-MAX_TEMP=$(cat /etc/conf.d/maxtemp.conf)
+MAX_CPU_TEMP=$(cat /etc/conf.d/maxtemp.conf)
 TRIP_GPU_TEMP=$(cat /etc/conf.d/gputemp.conf)
-[ $MAX_TEMP == 0 ] && MAX_TEMP=85
-[ $TRIP_GPU_TEMP == 0 ] && TRIP_GPU_TEMP=65
-echo "MAX_TEMP set to $MAX_TEMP"
+# Safe defaults
+[ $MAX_CPU_TEMP -eq 0 ] && MAX_CPU_TEMP=85
+[ $TRIP_GPU_TEMP -eq 0 ] && TRIP_GPU_TEMP=65
+echo "MAX_CPU_TEMP set to $MAX_CPU_TEMP"
 echo "TRIP_GPU_TEMP set to $TRIP_GPU_TEMP"
 
 ### START Initialize Global variables.
 
 # The frequency will increase when low temperature is reached.
-LOW_TEMP=$((MAX_TEMP - 2))
-MIN_GPU_TEMP=$((TRIP_GPU_TEMP - 5))
+LOW_CPU_TEMP=$((MAX_CPU_TEMP-10))
+MIN_CPU_TEMP=55
+MIN_GPU_TEMP=$((TRIP_GPU_TEMP-7))
 
 CORES=$(nproc) # Get number of CPU cores.
 echo -e "Number of CPU cores detected: $CORES\n"
-CORES=$((CORES - 1)) # Subtract 1 from $CORES for easier counting later.
+CORES=$((CORES-1)) # Subtract 1 from $CORES for easier counting later.
 CORES=$(seq 0 $CORES)
 
 # Temperatures internally are calculated to the thousandth.
-MAX_TEMP=${MAX_TEMP}000
-LOW_TEMP=${LOW_TEMP}000
+MAX_CPU_TEMP=${MAX_CPU_TEMP}000
+LOW_CPU_TEMP=${LOW_CPU_TEMP}000
+MIN_CPU_TEMP=${MIN_CPU_TEMP}000
 TRIP_GPU_TEMP=${TRIP_GPU_TEMP}000
 MIN_GPU_TEMP=${MIN_GPU_TEMP}000
 
@@ -131,14 +134,29 @@ unthrottle
 
 
 # Main loop
+CPUTIMER=0
+GPUTIMER=0
 while true; do
-    TEMP=$(cat /sys/class/thermal/thermal_zone1/temp)
-    if   [ $TEMP -gt $MAX_TEMP ]; then # Throttle if too hot.
+    FANS=($(i8kfan))
+    # 1st is GPUFAN, 2nd is CPUFAN
+    GPUFANSTATUS=${FANS[0]}
+    CPUFANSTATUS=${FANS[1]}
+    CPUTEMP=$(cat /sys/class/thermal/thermal_zone1/temp)
+    if   [ $CPUTEMP -gt $MAX_CPU_TEMP ]; then # Throttle if too hot.
+        dell-bios-fan-control 1
         throttle
-    elif [ $TEMP -le $LOW_TEMP ]; then # Unthrottle if cool.
+        i8ctl fan $GPUFANSTATUS 1
+    elif [ $CPUTEMP -le $LOW_CPU_TEMP ]; then # Unthrottle if cool.
         unthrottle
     fi
+    [[ $CPUTEMP -lt $MIN_CPU_TEMP && $CPUTIMER -gt 10 && $CPUFANSTATUS -eq 1 ]] && { dell-bios-fan-control 0; i8kctl fan $GPUFANSTATUS 0; CPUTIMER=0; }
     GPUTEMP=$(cat /sys/devices/virtual/hwmon/hwmon3/temp7_input)
-    [[ $GPUTEMP -le $TRIP_GPU_TEMP && $GPU_TEMP -lt $MIN_GPU_TEMP ]] && dell-bios-fan-control 1
-    sleep 0.5 # The amount of time between checking temperatures.
+    CPUFANSPEED=$(</sys/devices/virtual/hwmon/hwmon3/fan1_input)
+    GPUFANSPEED=$(</sys/devices/virtual/hwmon/hwmon3/fan2_input)
+    [[ $GPUTEMP -lt $MIN_GPU_TEMP && $GPUTIMER -gt 10 && GPUFANSTATUS -eq 1 ]] && { dell-bios-fan-control 1; i8kctl fan 0 $CPUFANSTATUS; GPUTIMER=0; }
+    echo "CPUTEMP: $CPUTEMP    CPUFANSPEED: $CPUFANSPEED	CPUTIMER: $CPUTIMER" >| /tmp/TIMERS
+    echo "GPUTEMP: $GPUTEMP    GPUFANSPEED: $GPUFANSPEED	GPUTIMER: $GPUTIMER" >> /tmp/TIMERS
+    sleep 0.5 # The amount of time between checking temperatures
+    CPUTIMER=$((CPUTIMER+1))
+    GPUTIMER=$((GPUTIMER+1))
 done
